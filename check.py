@@ -1,0 +1,118 @@
+import os
+import json
+import urllib.request
+import urllib.parse
+
+ALERTS_TOKEN = os.environ.get("ALERTS_TOKEN", "")
+BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID", "")
+# 434 = Березівська територіальна громада (з твого листа)
+TARGET_UID = os.environ.get("TARGET_UID", "434")
+# fallback: якщо тривога по всій Одеській області (UID 18) або по Березівському району -
+# це теж стосується Березівки
+OBLAST_NAME = "Одеська область"
+RAION_KEYWORD = "Березівський"
+STATE_FILE = "state.json"
+
+
+def tg_send(text):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    data = urllib.parse.urlencode({
+        "chat_id": CHAT_ID,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": "true",
+    }).encode()
+    req = urllib.request.Request(url, data=data)
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return r.read()[:500]
+
+
+def get_active():
+    url = "https://api.alerts.in.ua/v1/alerts/active.json"
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {ALERTS_TOKEN}"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8", "ignore")).get("alerts", [])
+
+
+def find_relevant(alerts):
+    # 1. прямо по громаді UID 434
+    for a in alerts:
+        if str(a.get("location_uid", "")) == str(TARGET_UID) and a.get("alert_type") == "air_raid":
+            return a
+    # 2. по району (Березівський район)
+    for a in alerts:
+        raion = (a.get("location_raion") or "") + " " + (a.get("location_title") or "")
+        if RAION_KEYWORD in raion and a.get("alert_type") == "air_raid":
+            # location_type raion
+            if a.get("location_type") == "raion":
+                return a
+    # 3. по всій області (Одеська область, UID 18, type oblast)
+    for a in alerts:
+        if a.get("location_title") == OBLAST_NAME and a.get("location_type") == "oblast" and a.get("alert_type") == "air_raid":
+            return a
+    return None
+
+
+def get_level(alert):
+    if not alert:
+        return "none"
+    lvl = alert.get("alert_level")
+    if lvl in ("red", "yellow"):
+        return lvl
+    threats = alert.get("threats") or []
+    # червоний важливіший за жовтий
+    levels = [t.get("level") for t in threats if t.get("level") in ("red", "yellow")]
+    if "red" in levels:
+        return "red"
+    if "yellow" in levels:
+        return "yellow"
+    return "red"  # стара тривога без level = рахуємо як червона
+
+
+def main():
+    assert ALERTS_TOKEN and BOT_TOKEN and CHAT_ID, "немає секретів ALERTS_TOKEN / TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID"
+    alerts = get_active()
+    found = find_relevant(alerts)
+    level = get_level(found)
+
+    prev = "unknown"
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            prev = json.load(f).get("level", "unknown")
+    except FileNotFoundError:
+        pass
+
+    print(f"now={level} prev={prev} matched={found['location_title'] if found else '-'}")
+
+    if level == prev:
+        print("no change, skip")
+        return
+
+    if level == "yellow":
+        tg_send(
+            "🟡 <b>ЖОВТИЙ РІВЕНЬ — Березівка!</b>\n\n"
+            "Загроза ударних БПЛА в Березівській громаді / районі.\n"
+            "Будьте уважні, слідкуйте за оновленнями.\n\n"
+            "#тривога #Березівка"
+        )
+    elif level == "red":
+        tg_send(
+            "🔴 <b>ЧЕРВОНИЙ РІВЕНЬ — Березівка!</b>\n\n"
+            "🚀 Ракетна небезпека! Терміново в укриття!\n"
+            "Не виходьте до відбою.\n\n"
+            "#тривога #Березівка"
+        )
+    else:  # none
+        if prev in ("yellow", "red"):
+            tg_send(
+                "🟢 <b>Відбій тривоги — Березівка.</b>\n"
+                "Можна виходити з укриттів."
+            )
+
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"level": level}, f)
+
+
+if __name__ == "__main__":
+    main()
