@@ -3,7 +3,6 @@ on:
   schedule:
     - cron: '*/3 * * * *'
   workflow_dispatch:
-
 jobs:
   check:
     runs-on: ubuntu-latest
