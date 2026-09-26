@@ -1,8 +1,23 @@
 import os
 import asyncio
 import logging
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from telethon.sessions import StringSession
 from telethon import TelegramClient, events
+
+def start_web_stub():
+    port = int(os.environ.get("PORT", "10000"))
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+        def log_message(self, *a):
+            pass
+    t = threading.Thread(target=HTTPServer(("0.0.0.0", port), H).serve_forever, daemon=True)
+    t.start()
+    logging.info(f"web stub on {port}")
 
 API_ID = int(os.environ.get("API_ID", "0"))
 API_HASH = os.environ.get("API_HASH", "")
@@ -36,6 +51,8 @@ def classify(text: str):
     return None
 
 async def main():
+        start_web_stub()
+
     assert API_ID and API_HASH and SESSION_STRING and TARGET_CHAT, "нет секретов"
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
