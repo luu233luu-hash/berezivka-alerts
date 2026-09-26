@@ -57,23 +57,27 @@ def save_sched(data):
     with open(SCHED_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
-def classify(text: str):
-    low = (text or "").lower()
-    if "хвилина мовчання" in low:
-        return "silence"
-    is_berez = "березів" in low or "березiв" in low or "березов" in low
-    if "відбій" in low or "відбiй" in low:
-        return "green" if (is_berez or "відбій повітряної тривоги" in low) else None
-    if not is_berez:
-        if "одеська область" not in low and "одесская область" not in low:
-            return None
-    if "червоний рівень" in low or "ракетна загроза" in low or "балістична" in low or "баллистич" in low:
-        return "red"
-    if "жовтий рівень" in low or "дронова загроза" in low:
-        return "yellow"
-    if "повітряна тривога" in low or "повiтряна тривога" in low:
-        return "yellow"
-    return None
+    async def handle_text(text):
+        kind = classify(text)
+        logging.info(f"donor post kind={kind} preview={text[:120]!r}")
+        if kind == "yellow":
+            await send_and_pin(client, YELLOW_TEXT)
+        elif kind == "red":
+            await send_and_pin(client, RED_TEXT)
+        elif kind == "green":
+            await send_and_pin(client, GREEN_TEXT)
+        elif kind == "silence":
+            await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
+        else:
+            logging.info("skip (not berezivka)")
+
+    @client.on(events.NewMessage(chats=SOURCE_CHAT))
+    async def handler(event):
+        await handle_text(event.message.message or "")
+
+    @client.on(events.MessageEdited(chats=SOURCE_CHAT))
+    async def handler_edit(event):
+        await handle_text(event.message.message or "")
 
 async def send_and_pin(client, text):
     msg = await client.send_message(TARGET_CHAT, text, parse_mode="html")
