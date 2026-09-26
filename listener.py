@@ -51,8 +51,7 @@ def classify(text: str):
     return None
 
 async def main():
-        start_web_stub()
-
+    start_web_stub()
     assert API_ID and API_HASH and SESSION_STRING and TARGET_CHAT, "нет секретов"
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
@@ -69,7 +68,7 @@ async def main():
             await client.send_message(TARGET_CHAT, GREEN_TEXT, parse_mode="html")
         elif kind == "silence":
             await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
-    logging.info("listener online...")
+    logging.info("listener online, waiting 1-10 sec posts...")
     await client.run_until_disconnected()
 
 if __name__ == "__main__":
