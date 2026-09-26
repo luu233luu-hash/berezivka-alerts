@@ -24,4 +24,4 @@ jobs:
         continue-on-error: true
         with:
           commit_message: update state
-          file_pattern: state.json silence_state.json
+          file_pattern: state.json silence_state.json scheduled_state.json
