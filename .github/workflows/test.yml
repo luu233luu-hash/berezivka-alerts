@@ -1,0 +1,10 @@
+name: test-filter
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          python -c "from listener import classify; print(classify('У місті Березівка та Березівському районі оголошено повітряну тривогу. Загроза 400. Негайно пройдіть в укриття. Жовтий рівень · Дронова загроза')); print(classify('УВАГА! ВІДБІЙ ПОВІТРЯНОЇ ТРИВОГИ! У місті Березівка та Березівському районі оголошено відбій повітряної тривоги'))"
