@@ -59,18 +59,18 @@ def save_sched(data):
 
 def classify(text: str):
     low = (text or "").lower()
-    if "Щодня о 09:00 Україна завмирає на хвилину, щоб вшанувати пам'ять усіх, хто віддав своє життя за нашу свободу та незалежність." in low or "хвилина мовчан" in low:
+    if "хвилина мовчання" in low:
         return "silence"
-    is_berez = ("берез" in low) or ("berez" in low)
-    is_vidbiy = ("У місті Березівка та Березівському районі оголошено відбій повітряної тривоги." in low) or ("У місті Березівка та Березівському районі оголошено відбій повітряної тривоги." in low) or ("У місті Березівка та Березівському районі оголошено відбій повітряної тривоги." in low) or ("отбій" in low)
-    if is_vidbiy:
+    # отбой - грубо, без привязки к і/ї
+    if "Відбій" in low or "вiдб" in low or "отбой" in low or "отбій" in low:
         return "green"
+    is_berez = "березів" in low or "березiв" in low or "березов" in low or "берез" in low
     if not is_berez:
         if "одеська область" not in low and "одесская область" not in low:
             return None
-    if "червоний рівень" in low or "🔴 Червоний рівень · Ракетна загроза" in low or "🔴 Червоний рівень · Ракетна загроза" in low or "баллистич" in low:
+    if "червоний рівень" in low or "ракетна загроза" in low or "балістична" in low or "баллистич" in low:
         return "red"
-    if "жовтий рівень" in low or "🟡 Жовтий рівень · Дронова загроза" in low:
+    if "жовтий рівень" in low or "дронова загроза" in low:
         return "yellow"
     if "повітряна тривога" in low or "повiтряна тривога" in low:
         return "yellow"
@@ -122,10 +122,10 @@ async def main():
             await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
     @client.on(events.NewMessage(chats=SOURCE_CHAT))
     async def handler(event):
-        await handle_text(event.message.message or "")
+        await handle_text(event.message.message or event.message.text or "")
     @client.on(events.MessageEdited(chats=SOURCE_CHAT))
     async def handler_edit(event):
-        await handle_text(event.message.message or "")
+        await handle_text(event.message.message or event.message.text or "")
     import asyncio as _a
     _a.create_task(scheduler_loop(client))
     await client.run_until_disconnected()
