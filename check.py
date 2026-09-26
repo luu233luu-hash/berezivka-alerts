@@ -69,6 +69,14 @@ def get_level(alert):
 async def tg_send(client, text):
     await client.send_message(CHAT_ID, text, parse_mode="html")
 
+async def tg_send_pin(client, text):
+    msg = await client.send_message(CHAT_ID, text, parse_mode="html")
+    try:
+        await client.pin_message(CHAT_ID, msg.id, notify=False)
+    except Exception as e:
+        print(f"pin failed: {e}")
+    return msg
+
 async def main():
     assert ALERTS_TOKEN and API_ID and API_HASH and SESSION_STRING and CHAT_ID, "нет секретов"
     async with TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH) as client:
@@ -83,11 +91,11 @@ async def main():
         print(f"now={level} prev={prev}")
         if level != prev:
             if level == "yellow":
-                await tg_send(client, YELLOW_TEXT)
+                await tg_send_pin(client, YELLOW_TEXT)
             elif level == "red":
-                await tg_send(client, RED_TEXT)
+                await tg_send_pin(client, RED_TEXT)
             elif prev in ("yellow", "red"):
-                await tg_send(client, GREEN_TEXT)
+                await tg_send_pin(client, GREEN_TEXT)
             with open(STATE_FILE, "w", encoding="utf-8") as f:
                 json.dump({"level": level}, f)
         now = kyiv_now()
