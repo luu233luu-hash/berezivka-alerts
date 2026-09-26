@@ -62,7 +62,7 @@ def classify(text: str):
     if "хвилина мовчання" in low:
         return "silence"
     # отбой - грубо, без привязки к і/ї
-    if "Відбій" in low or "вiдб" in low or "отбой" in low or "отбій" in low:
+    if "відб" in low or "вiдб" in low or "отбой" in low or "отбій" in low:
         return "green"
     is_berez = "березів" in low or "березiв" in low or "березов" in low or "берез" in low
     if not is_berez:
