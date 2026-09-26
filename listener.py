@@ -57,27 +57,24 @@ def save_sched(data):
     with open(SCHED_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
-    async def handle_text(text):
-        kind = classify(text)
-        logging.info(f"donor post kind={kind} preview={text[:120]!r}")
-        if kind == "yellow":
-            await send_and_pin(client, YELLOW_TEXT)
-        elif kind == "red":
-            await send_and_pin(client, RED_TEXT)
-        elif kind == "green":
-            await send_and_pin(client, GREEN_TEXT)
-        elif kind == "silence":
-            await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
-        else:
-            logging.info("skip (not berezivka)")
-
-    @client.on(events.NewMessage(chats=SOURCE_CHAT))
-    async def handler(event):
-        await handle_text(event.message.message or "")
-
-    @client.on(events.MessageEdited(chats=SOURCE_CHAT))
-    async def handler_edit(event):
-        await handle_text(event.message.message or "")
+def classify(text: str):
+    low = (text or "").lower()
+    if "Щодня о 09:00 Україна завмирає на хвилину, щоб вшанувати пам'ять усіх, хто віддав своє життя за нашу свободу та незалежність." in low or "хвилина мовчан" in low:
+        return "silence"
+    is_berez = ("берез" in low) or ("berez" in low)
+    is_vidbiy = ("У місті Березівка та Березівському районі оголошено відбій повітряної тривоги." in low) or ("У місті Березівка та Березівському районі оголошено відбій повітряної тривоги." in low) or ("У місті Березівка та Березівському районі оголошено відбій повітряної тривоги." in low) or ("отбій" in low)
+    if is_vidbiy:
+        return "green"
+    if not is_berez:
+        if "одеська область" not in low and "одесская область" not in low:
+            return None
+    if "червоний рівень" in low or "🔴 Червоний рівень · Ракетна загроза" in low or "🔴 Червоний рівень · Ракетна загроза" in low or "баллистич" in low:
+        return "red"
+    if "жовтий рівень" in low or "🟡 Жовтий рівень · Дронова загроза" in low:
+        return "yellow"
+    if "повітряна тривога" in low or "повiтряна тривога" in low:
+        return "yellow"
+    return None
 
 async def send_and_pin(client, text):
     msg = await client.send_message(TARGET_CHAT, text, parse_mode="html")
@@ -112,9 +109,9 @@ async def main():
     assert API_ID and API_HASH and SESSION_STRING and TARGET_CHAT, "нет секретов"
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
-    @client.on(events.NewMessage(chats=SOURCE_CHAT))
-    async def handler(event):
-        kind = classify(event.message.message or "")
+    async def handle_text(text):
+        kind = classify(text)
+        logging.info(f"donor post kind={kind} preview={text[:120]!r}")
         if kind == "yellow":
             await send_and_pin(client, YELLOW_TEXT)
         elif kind == "red":
@@ -123,6 +120,12 @@ async def main():
             await send_and_pin(client, GREEN_TEXT)
         elif kind == "silence":
             await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
+    @client.on(events.NewMessage(chats=SOURCE_CHAT))
+    async def handler(event):
+        await handle_text(event.message.message or "")
+    @client.on(events.MessageEdited(chats=SOURCE_CHAT))
+    async def handler_edit(event):
+        await handle_text(event.message.message or "")
     import asyncio as _a
     _a.create_task(scheduler_loop(client))
     await client.run_until_disconnected()
