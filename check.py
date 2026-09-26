@@ -14,6 +14,45 @@ TARGET_UID = os.environ.get("TARGET_UID", "434")
 OBLAST_NAME = "Одеська область"
 RAION_KEYWORD = "Березівський"
 STATE_FILE = "state.json"
+SILENCE_FILE = "silence_state.json"
+
+SILENCE_TEXT = (
+    "🖤 <b>Хвилина мовчання</b>\n"
+    "Зупинись. Помовчи. Відчуй.\n\n"
+    "Сьогодні ми згадуємо тих, хто віддав своє життя за наш спокій і свободу.\n"
+    "Їх немає поруч, але їхня відвага живе в кожному нашому подиху.\n\n"
+    "Вічна пам'ять. Вічна слава Героям України."
+)
+
+def should_send_silence():
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        now = datetime.now(ZoneInfo("Europe/Kyiv"))
+    except Exception:
+        from datetime import datetime
+        now = datetime.utcnow()
+    if now.hour != 9 or now.minute >= 5:
+        return False
+    today = now.date().isoformat()
+    try:
+        with open(SILENCE_FILE, encoding="utf-8") as f:
+            if json.load(f).get("date") == today:
+                return False
+    except FileNotFoundError:
+        pass
+    return True
+
+def mark_silence_sent():
+    try:
+        from zoneinfo import ZoneInfo
+        from datetime import datetime
+        today = datetime.now(ZoneInfo("Europe/Kyiv")).date().isoformat()
+    except Exception:
+        from datetime import datetime
+        today = datetime.utcnow().date().isoformat()
+    with open(SILENCE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"date": today}, f)
 
 def get_active():
     url = "https://api.alerts.in.ua/v1/alerts/active.json"
@@ -65,38 +104,24 @@ async def main():
     except FileNotFoundError:
         pass
     print(f"now={level} prev={prev} matched={found['location_title'] if found else '-'}")
-    if level == prev:
-        print("no change, skip")
-        return
-    if level == "yellow":
-        await tg_send(
-            "❗ <b>УВАГА</b> ❗\n"
-            "🚨 ПОВІТРЯНА ТРИВОГА\n"
-            "📍 Березівський район\n\n"
-            "🟡 Жовтий рівень небезпеки\n"
-            "🔴 Пройдіть в укриття та перебувайте там до відбою!\n\n"
-            "💚 Бережіть себе та своїх близьких 🫂"
-        )
-    elif level == "red":
-        await tg_send(
-            "🔴 <b>УВАГА!</b>\n"
-            "БАЛІСТИЧНА ЗАГРОЗА!\n"
-            "📍 Березівський район\n\n"
-            "Не ігноруйте сигнал повітряної тривоги та прямуйте в укриття."
-        )
+    if level != prev:
+        if level == "yellow":
+            await tg_send("❗ <b>УВАГА</b> ❗\n🚨 ПОВІТРЯНА ТРИВОГА\n📍 Березівський район\n\n🟡 Жовтий рівень небезпеки\n🔴 Пройдіть в укриття та перебувайте там до відбою!\n\n💚 Бережіть себе та своїх близьких 🫂")
+        elif level == "red":
+            await tg_send("🔴 <b>УВАГА!</b>\nБАЛІСТИЧНА ЗАГРОЗА!\n📍 Березівський район\n\nНе ігноруйте сигнал повітряної тривоги та прямуйте в укриття.")
+        else:
+            if prev in ("yellow", "red"):
+                await tg_send("🟢 <b>УВАГА!</b>\nВІДБІЙ ПОВІТРЯНОЇ ТРИВОГИ\n📍 Березівський район\n\nСлідкуйте за офіційними повідомленнями.\n\nОбіймаємо вас ❤️\n🦊 Ваша команда «Бесідки»")
+        with open(STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"level": level}, f)
     else:
-        if prev in ("yellow", "red"):
-            await tg_send(
-                "🟢 <b>УВАГА!</b>\n"
-                "ВІДБІЙ ПОВІТРЯНОЇ ТРИВОГИ\n"
-                "📍 Березівський район\n\n"
-                "Слідкуйте за офіційними повідомленнями.\n\n"
-                "Обіймаємо вас ❤️\n"
-                "🦊 Ваша команда «Бесідки»"
-            )
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
-        json.dump({"level": level}, f)
+        print("no change, skip")
+    if should_send_silence():
+        print("sending silence")
+        await tg_send(SILENCE_TEXT)
+        mark_silence_sent()
+    else:
+        print("silence skip")
 
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
