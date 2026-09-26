@@ -21,6 +21,7 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           TARGET_UID: '434'
       - uses: stefanzweifel/git-auto-commit-action@v5
+        continue-on-error: true
         with:
           commit_message: update state
-          file_pattern: state.json
+          file_pattern: state.json silence_state.json
