@@ -32,6 +32,7 @@ TEXT_ANON = ("🫣 <b>Є що розповісти, але не хочеш св�
 TEXT_FRIENDS = ("Друзі! 💛\n\nЯкщо у вас є друзі або родичі з Березівки чи району — запрошуйте їх до нас! 🫶\nБудемо раді кожній людині, яка приєднається та підтримає нас.\nРазом нас буде ще більше! ❤️\nhttps://t.me/flud_bz_k\n\nБудемо раді якщо ви поділитися ❤️")
 SCHEDULE = {"05:00": "anon", "19:00": "anon", "12:00": "friends", "00:00": "friends"}
 SCHED_FILE = "scheduled_state.json"
+LAST_FILE = "last_kind.txt"
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
 
@@ -57,11 +58,47 @@ def save_sched(data):
     with open(SCHED_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f)
 
+def load_last():
+    try:
+        with open(LAST_FILE, encoding="utf-8") as f:
+            v = f.read().strip()
+            return v if v in ("yellow", "red", "green") else None
+    except FileNotFoundError:
+        return None
+
+def save_last(kind):
+    with open(LAST_FILE, "w", encoding="utf-8") as f:
+        f.write(kind or "")
+
+def text_kind(t):
+    t = t or ""
+    if "Жовтий рівень небезпеки" in t:
+        return "yellow"
+    if "БАЛІСТИЧНА ЗАГРОЗА" in t:
+        return "red"
+    if "ВІДБІЙ ПОВІТРЯНОЇ ТРИВОГИ" in t:
+        return "green"
+    return None
+
+async def init_last_from_history(client):
+    global LAST_KIND
+    if LAST_KIND:
+        return
+    try:
+        async for m in client.iter_messages(TARGET_CHAT, limit=10):
+            k = text_kind(m.message or m.text or "")
+            if k:
+                LAST_KIND = k
+                save_last(k)
+                logging.info(f"init last={k} from history")
+                return
+    except Exception as e:
+        logging.warning(f"history read failed: {e}")
+
 def classify(text: str):
     low = (text or "").lower()
     if "хвилина мовчання" in low:
         return "silence"
-    # отбой - грубо, без привязки к і/ї
     if "відб" in low or "вiдб" in low or "отбой" in low or "отбій" in low:
         return "green"
     is_berez = "березів" in low or "березiв" in low or "березов" in low or "берез" in low
@@ -104,22 +141,35 @@ async def scheduler_loop(client):
             logging.warning(f"scheduler error: {e}")
         await asyncio.sleep(30)
 
+LAST_KIND = load_last()
+
 async def main():
+    global LAST_KIND
     start_web_stub()
     assert API_ID and API_HASH and SESSION_STRING and TARGET_CHAT, "нет секретов"
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     await client.start()
+    await init_last_from_history(client)
     async def handle_text(text):
+        global LAST_KIND
         kind = classify(text)
-        logging.info(f"donor post kind={kind} preview={text[:120]!r}")
+        logging.info(f"donor post kind={kind} last={LAST_KIND} preview={text[:120]!r}")
+        if kind is None:
+            return
+        if kind == "silence":
+            await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
+            return
+        if kind == LAST_KIND:
+            logging.info(f"dup {kind} skip (already last)")
+            return
         if kind == "yellow":
             await send_and_pin(client, YELLOW_TEXT)
         elif kind == "red":
             await send_and_pin(client, RED_TEXT)
         elif kind == "green":
             await send_and_pin(client, GREEN_TEXT)
-        elif kind == "silence":
-            await client.send_message(TARGET_CHAT, SILENCE_TEXT, parse_mode="html")
+        LAST_KIND = kind
+        save_last(kind)
     @client.on(events.NewMessage(chats=SOURCE_CHAT))
     async def handler(event):
         await handle_text(event.message.message or event.message.text or "")
